@@ -124,38 +124,43 @@ def get_comment_message():
     return pattern.sub(lambda x: random.choice(x.group(1).split("|")), message)
 
 
-commented_video_ids = set()
+commented_video_ids = []
 
 
 # Define a function to load channels from a file or database
-def load_channels(source, max_channels=100):
-    channels = []
-    if source == 'file':
-        with open('youtube_channels.txt', 'r') as f:
-            channel_lines = [line.strip() for line in f.readlines()]
-        channels = channel_lines[:max_channels]
-    elif source == 'database':
-        # Connect to the database
-        conn = mysql.connector.connect(**config)
-        cursor = conn.cursor()
+def load_channels(src, max_channels=100):
+    chnls = []
+    if src == 'file':
+        try:
+            with open('youtube_channelsv.txt', 'r') as f:
+                channel_lines = [line.strip() for line in f.readlines()]
+            chnls = channel_lines[:max_channels]
+        except FileNotFoundError:
+            print("File 'youtube_channels.txt' not found!")
+    elif src == 'database':
+        try:
+            # Connect to the database
+            conn = mysql.connector.connect(**config)
+            cursor = conn.cursor()
 
-        # Load channels from the database
-        query = "SELECT channel_url FROM channels LIMIT %s"
-        cursor.execute(query, (max_channels,))
-        rows = cursor.fetchall()
-        for row in rows:
-            channels.append(row[0])
+            # Load channels from the database
+            query = "SELECT channel_url FROM channels LIMIT %s"
+            cursor.execute(query, (max_channels,))
+            rows = cursor.fetchall()
+            for row in rows:
+                chnls.append(row[0])
 
-        # Close the database connection
-        conn.close()
-    return channels
+            # Close the database connection
+            conn.close()
+        except mysql.connector.Error as e:
+            print("Error connecting to database:", e)
+    return chnls
 
 
 # Define a function to scrape videos for a single channel
-def scrape_videos_for_channel(channel, commented_video_ids):
+def scrape_videos_for_channel(channel_id, commented_video_ids):
     # Try both URL variants
-    new_video_id = None
-    urls = [f'https://www.youtube.com/{channel}/videos', f'https://www.youtube.com/channel/{channel}/videos']
+    urls = [f'https://www.youtube.com/{channel_id}/videos', f'https://www.youtube.com/channel/{channel_id}/videos']
     for url in urls:
         new_video_id = scrape_videos(url, commented_video_ids)
         # Если найден новый уникальный идентификатор, то оставляем комментарий и добавляем его в список commented_video_ids
@@ -163,9 +168,9 @@ def scrape_videos_for_channel(channel, commented_video_ids):
             comment_text = get_comment_message()
             print(comment_text)
             # comment_on_video(new_video_id, comment_text)
-            commented_video_ids |= set(new_video_id)
+            commented_video_ids.append(new_video_id)
             # Break out of the inner for loop so that we don't try the other URL variant
-            print(channel)
+            print(channel_id)
             print(new_video_id)
             break
 
@@ -184,11 +189,7 @@ def scrape_videos_for_channel_with_lock(channel_url, commented_video_ids):
     """
     try:
         # Scrape the videos for the channel
-        new_video_ids = scrape_videos_for_channel(channel_url, commented_video_ids)
-        # Add any new video IDs to the set, using the lock to ensure safe access
-        with commented_video_ids_lock:
-            if new_video_ids is not None:
-                commented_video_ids.update(new_video_ids)
+        scrape_videos_for_channel(channel_url, commented_video_ids)
     except Exception as e:
         # Log any exceptions that occur
         logger.exception(f"Error scraping videos for channel {channel_url}: {e}")
@@ -196,7 +197,8 @@ def scrape_videos_for_channel_with_lock(channel_url, commented_video_ids):
 
 # Scrape videos for each channel using multiple threads
 while True:
-    channels = load_channels('database', 100)
+    source = 'database'
+    channels = load_channels(source, 100)
     if not channels:
         print("No channels found. Waiting for 1 hour before checking again.")
         time.sleep(3600)
