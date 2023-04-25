@@ -4,6 +4,8 @@ import re
 import random
 import spintax
 import concurrent.futures
+import mysql.connector
+from database_config import config
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -62,14 +64,28 @@ def get_comment_message(s):
 commented_video_ids = []
 
 
-def load_channels():
-    with open('youtube_channels.txt', 'r') as f:
-        channel_line = [line.strip() for line in f.readlines()]
-    return channel_line
+# Define a function to load channels from a file or database
+def load_channels(source, max_channels=100):
+    channels = []
+    if source == 'file':
+        with open('youtube_channels.txt', 'r') as f:
+            channel_lines = [line.strip() for line in f.readlines()]
+        channels = channel_lines[:max_channels]
+    elif source == 'database':
+        # Connect to the database
+        conn = mysql.connector.connect(**config)
+        cursor = conn.cursor()
 
+        # Load channels from the database
+        query = "SELECT channel_url FROM channels LIMIT %s"
+        cursor.execute(query, (max_channels,))
+        rows = cursor.fetchall()
+        for row in rows:
+            channels.append(row[0])
 
-# Define the number of threads to use
-NUM_THREADS = 5
+        # Close the database connection
+        conn.close()
+    return channels
 
 
 # Define a function to scrape videos for a single channel
@@ -92,7 +108,13 @@ def scrape_videos_for_channel(channel, commented_video_ids):
 
 # Scrape videos for each channel using multiple threads
 while True:
-    channels = load_channels()
+    channels = load_channels('database', 100)
+    if not channels:
+        print("No channels found. Waiting for 1 hour before checking again.")
+        time.sleep(3600)
+        continue
+    # Define the number of threads to use
+    NUM_THREADS = 5
     with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         futures = []
         for channel in channels:

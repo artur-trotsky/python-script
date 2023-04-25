@@ -136,3 +136,4 @@ RUN update-alternatives --install /usr/bin/python python /usr/local/bin/python3.
 RUN apt install python3-pip -y
 RUN pip3 install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
 RUN pip3 install beautifulsoup4
+RUN pip3 install mysql-connector-python
