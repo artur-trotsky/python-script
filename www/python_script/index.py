@@ -9,12 +9,12 @@ import threading
 import time
 import json
 
-# Загрузка конфига из файла
+# Loading a config from a file
 with open('config.json') as f:
     config = json.load(f)
 
 
-def scrape_videos(youtube_url, commented_video_ids):
+def scrape_videos(youtube_url, video_ids):
     # Set up virtual driver
     options = webdriver.ChromeOptions()
     options.add_argument('headless')
@@ -34,11 +34,11 @@ def scrape_videos(youtube_url, commented_video_ids):
         pattern = re.compile(r'href="/watch\?v=([^"]+)')
         matches = pattern.findall(str(soup))
 
-        # Преобразуем результаты в список уникальных значений и сохраняем порядок элементов
+        # Converting the results to a list of unique values and preserving the order of the elements
         unique_video_ids = list(OrderedDict.fromkeys([id.strip('"') for match in matches for id in match.split(',')]))
 
-        # Получить первый уникальный идентификатор видео
-        new_video_id = next((vid for vid in unique_video_ids if vid not in commented_video_ids), None)
+        # Get the first unique video id
+        new_video_id = next((vid for vid in unique_video_ids if vid not in video_ids), None)
         if new_video_id is not None:
             break
         if new_height == last_height:
@@ -95,12 +95,12 @@ def load_channels(src, max_channels=100):
 
 
 # Define a function to scrape videos for a single channel
-def scrape_videos_for_channel(channel_id, commented_video_ids):
+def scrape_videos_for_channel(channel_id, video_ids):
     # Try both URL variants
     urls = [f'https://www.youtube.com/{channel_id}/videos', f'https://www.youtube.com/channel/{channel_id}/videos']
     for url in urls:
-        new_video_id = scrape_videos(url, commented_video_ids)
-        # Если найден новый уникальный идентификатор, то оставляем комментарий и добавляем его в список commented_video_ids
+        new_video_id = scrape_videos(url, video_ids)
+        # If a new unique identifier is found, then leave a comment and add it to the list commented_video_ids
         if new_video_id is not None:
             comment_text = get_comment_message()
             print(comment_text)
@@ -119,14 +119,14 @@ commented_video_ids_lock = threading.Lock()
 logger = logging.getLogger(__name__)
 
 
-def scrape_videos_for_channel_with_lock(channel_url, commented_video_ids):
+def scrape_videos_for_channel_with_lock(channel_url, video_ids):
     """
     Scrape videos for a single channel, using a lock to ensure
-    safe access to the commented_video_ids set.
+    safe access to the video_ids set.
     """
     try:
         # Scrape the videos for the channel
-        scrape_videos_for_channel(channel_url, commented_video_ids)
+        scrape_videos_for_channel(channel_url, video_ids)
     except Exception as e:
         # Log any exceptions that occur
         logger.exception(f"Error scraping videos for channel {channel_url}: {e}")
@@ -153,4 +153,5 @@ while True:
             logger.exception(f"Error in thread: {e}")
     # Pause before checking again
     print('Pause before checking again')
+    print(commented_video_ids)
     time.sleep(config['wait_interval_after_scrape'])
