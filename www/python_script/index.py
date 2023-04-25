@@ -1,16 +1,17 @@
-import time
 from collections import OrderedDict
-import re
-import random
-import spintax
-import concurrent.futures
-import mysql.connector
-from database_config import config
-import threading
-import logging
-
 from bs4 import BeautifulSoup
 from selenium import webdriver
+import logging
+import mysql.connector
+import random
+import re
+import threading
+import time
+import json
+
+# Загрузка конфига из файла
+with open('config.json') as f:
+    config = json.load(f)
 
 
 def scrape_videos(youtube_url, commented_video_ids):
@@ -54,71 +55,7 @@ def get_comment_message():
     """
     Generates a random comment message from a list of options using spintax syntax.
     """
-    comment_messages = [
-        "{Hey|Hello|Hi}, {great video!|nice content!|awesome work!}",
-        "{Keep up the good work!|You're doing great!|Excellent content!}",
-        "{I really enjoyed this video!|This video was so informative!|Thanks for sharing your knowledge!}",
-        "{Can't wait for your next video!|Looking forward to seeing more!|Excited for what's next!}",
-        "{You have a new subscriber!|Just subscribed!|Subscribed and hit the notification bell!}",
-        "{This video deserves more views!|Underrated content!|Why isn't this more popular?}",
-        "{Thanks for making my day better!|Your videos always brighten my day!|Your positive energy is infectious!}",
-        "{Great job on the production quality!|Love the editing!|You have some serious skills behind the camera!}",
-        "{I learned something new today!|I never knew that before!|Thanks for teaching me something new!}",
-        "{You're a natural on camera!|So comfortable in front of the camera!|Love your personality on camera!}",
-        "{This|That} is {amazing|fantastic|incredible}! {Great job|Well done|Kudos}!",
-        "{Keep it up|Keep up the good work}! {I love|I really like} this video.",
-        "{This is|That was} {so helpful|so informative|a great tutorial}. {Thank you|Thanks} for sharing!",
-        "{I'm|I am} {impressed|blown away} by your {skills|talent}. {You are|You're} amazing!",
-        "{Awesome video|Great video|Excellent content}! {Thanks for sharing|Thanks for posting}.",
-        "{I've|I have} {learned so much|picked up so many great tips} from this video. {Thanks|Thank you}!",
-        "{This video|Your content} {deserves|merits} {more views|more attention}. {Keep up|Keep it up} the great work!",
-        "{Your|This} {channel|content} {is|has been} {a great resource|so helpful} to me. {Thanks|Thank you}!",
-        "{This|That} {was|is} {so interesting|fascinating}. {I can't wait|Looking forward} to {seeing|watching} more from you.",
-        "{You|Your channel} {is|are} {an inspiration|awesome}. {Keep it up|Keep up the good work}!",
-        "{Amazing|Awesome|Fantastic} video! {I loved it|It was great|Keep it up}.",
-        "{This|That} {was|is} {exactly what I needed|so helpful|very informative}. {Thanks|Thank you} for sharing.",
-        "{This video|Your content} {is|has been} {so helpful|a great help} to me. {Thanks|Thank you} for {sharing|posting}.",
-        "{I'm|I am} {a new subscriber|subscribed}! {I can't wait|Looking forward} to {seeing|watching} more from you.",
-        "{You|Your channel} {deserve|deserves} {more subscribers|more views}. {Keep up|Keep it up} the great work!",
-        "{Excellent|Fantastic|Great} video! {Thanks for sharing|Thanks for posting}.",
-        "{You|Your channel} {are|is} {a great inspiration|so talented}. {Thanks|Thank you} for {sharing|posting}.",
-        "{This|That} {was|is} {so helpful|very informative}. {Thanks|Thank you} for {sharing|posting}.",
-        "{I|We} {love|enjoy} {your content|watching your videos}. {Keep it up|Keep up the good work}!",
-        "{This|That} {was|is} {exactly what I was looking for|so helpful}. {Thanks|Thank you} for sharing.",
-        "{Your|This} {channel|content} {has|is} {been so helpful|a great help} to me. {Thanks|Thank you}!",
-        "{Great video|Awesome video|Amazing content}! {Thanks for sharing|Thanks for posting}.",
-        "{I|We} {can't wait|are looking forward} to {seeing|watching} more from you. {Keep up|Keep it up} the great work!",
-        "{This video|Your content} {has|is} {given me|proven to be} {so much value|a great resource}. {Thanks|Thank you} for {sharing|posting}.",
-        "{Great video!|Awesome content!|Fantastic work!}",
-        "{Wow, this is impressive!|I'm blown away by this!|This is incredible!}",
-        "{I love this!|This is amazing!|This is so cool!}",
-        "{You're killing it!|Keep up the great work!|You're doing an awesome job!}",
-        "{This is exactly what I needed today!|Thanks for sharing this!|You're making my day with this video!}",
-        "{I can't stop watching this!|I'm hooked on your content!|This is so addicting!}",
-        "{Your videos always inspire me!|You're such a motivator!|I look up to you so much!}",
-        "{You have a gift for this!|Your talent is shining through!|You're a natural at this!}",
-        "{This video just made my day!|I'm so grateful for this content!|Thank you for sharing this with us!}",
-        "{You're a true expert in your field!|I'm learning so much from you!|You're a wealth of knowledge!}",
-        "{Your enthusiasm is contagious!|I love your energy!|You're so passionate about what you do!}",
-        "{You have a unique perspective on things!|I always learn something new from you!|You bring a fresh take to everything you do!}",
-        "{Your creativity is inspiring!|You have such a creative mind!|I'm always amazed by your ideas!}",
-        "{I can't wait to see what you do next!|I'm eagerly anticipating your next video!|You're always surprising me with your content!}",
-        "{This is such a helpful video!|I'm taking notes on everything you're saying!|You're making things so clear for me!}",
-        "{You have a real talent for teaching!|You explain things so well!|You're making this so easy for me to understand!}",
-        "{Your positive attitude is infectious!|I love your optimism!|You always find the silver lining!}",
-        "{This video is a game-changer!|You're revolutionizing the way we think about this!|You're taking things to the next level!}",
-        "{You have a great sense of humor!|Your videos always make me laugh!|You're so funny and entertaining!}",
-        "{I can't believe how much value you're providing!|You're so generous with your knowledge!|You're giving so much back to your audience!}",
-        "{You're such a natural on camera!|You have a great presence!|You're so comfortable in front of the camera!}",
-        "{I'm always excited to see what you're up to!|You're always up to something exciting!|You never cease to amaze me with your content!}",
-        "{You're changing lives with your videos!|You're making a real difference in the world!|You're helping so many people with your content!}",
-        "{You have a gift for storytelling!|You're a great storyteller!|You have a real knack for narrative!}",
-        "{Your videos are so well-produced!|You have a great eye for detail!|You're a true professional!}",
-        "{You're a master of your craft!|You've really honed your skills!|You're at the top of your game!}",
-        "{I'm always recommending your videos to others!|You're my go-to source for this topic!|You're so reliable and trustworthy!}"
-    ]
-
-    message = random.choice(comment_messages)
+    message = random.choice(config['spintax_comment_messages'])
     pattern = re.compile(r'\{([^}]+)\}')
 
     return pattern.sub(lambda x: random.choice(x.group(1).split("|")), message)
@@ -132,15 +69,15 @@ def load_channels(src, max_channels=100):
     chnls = []
     if src == 'file':
         try:
-            with open('youtube_channelsv.txt', 'r') as f:
+            with open(config['youtube_channels_file'], 'r') as f:
                 channel_lines = [line.strip() for line in f.readlines()]
             chnls = channel_lines[:max_channels]
         except FileNotFoundError:
-            print("File 'youtube_channels.txt' not found!")
+            print('File ' + config['youtube_channels_file'] + ' not found!')
     elif src == 'database':
         try:
             # Connect to the database
-            conn = mysql.connector.connect(**config)
+            conn = mysql.connector.connect(**config['database_config'])
             cursor = conn.cursor()
 
             # Load channels from the database
@@ -153,7 +90,7 @@ def load_channels(src, max_channels=100):
             # Close the database connection
             conn.close()
         except mysql.connector.Error as e:
-            print("Error connecting to database:", e)
+            print('Error connecting to database:', e)
     return chnls
 
 
@@ -197,11 +134,10 @@ def scrape_videos_for_channel_with_lock(channel_url, commented_video_ids):
 
 # Scrape videos for each channel using multiple threads
 while True:
-    source = 'database'
-    channels = load_channels(source, 100)
+    channels = load_channels(config['source'], config['max_channels'])
     if not channels:
-        print("No channels found. Waiting for 1 hour before checking again.")
-        time.sleep(3600)
+        print('No channels found. Waiting for ' + config['wait_interval_no_channels'] + ' sec before checking again.')
+        time.sleep(config['wait_interval_no_channels'])
         continue
     threads = []
     for channel in channels:
@@ -216,4 +152,5 @@ while True:
         except Exception as e:
             logger.exception(f"Error in thread: {e}")
     # Pause before checking again
-    time.sleep(30)
+    print('Pause before checking again')
+    time.sleep(config['wait_interval_after_scrape'])
