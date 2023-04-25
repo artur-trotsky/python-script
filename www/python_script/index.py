@@ -201,19 +201,17 @@ while True:
         print("No channels found. Waiting for 1 hour before checking again.")
         time.sleep(3600)
         continue
-    # Define the number of threads to use
-    num_threads = 5
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = []
-        for channel in channels:
-            future = executor.submit(scrape_videos_for_channel_with_lock, channel, commented_video_ids)
-            futures.append(future)
-        # Wait for all the threads to finish
-        for future in concurrent.futures.as_completed(futures):
-            # Catch and log any exceptions that occur within the threads
-            try:
-                result = future.result()
-            except Exception as e:
-                logger.exception(f"Error in thread: {e}")
+    threads = []
+    for channel in channels:
+        thread = threading.Thread(target=scrape_videos_for_channel_with_lock, args=(channel, commented_video_ids))
+        threads.append(thread)
+        thread.start()
+    # Wait for all the threads to finish
+    for thread in threads:
+        # Catch and log any exceptions that occur within the threads
+        try:
+            thread.join()
+        except Exception as e:
+            logger.exception(f"Error in thread: {e}")
     # Pause before checking again
     time.sleep(30)
