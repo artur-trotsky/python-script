@@ -3,6 +3,7 @@ from collections import OrderedDict
 import re
 import random
 import spintax
+import concurrent.futures
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -49,6 +50,7 @@ def get_comment_message(s):
     """
     Replaces spintax syntax ({text1|text2|text3}) in a string with a random choice of the provided texts.
     """
+
     def repl(match):
         options = match.group(1).split('|')
         return random.choice(options)
@@ -66,26 +68,52 @@ def load_channels():
     return channel_line
 
 
-# Scrape videos for each channel
+# Define the number of threads to use
+NUM_THREADS = 5
+
+
+# Define a function to scrape videos for a single channel
+def scrape_videos_for_channel(channel, commented_video_ids):
+    # Try both URL variants
+    new_video_id = None
+    urls = [f'https://www.youtube.com/{channel}/videos', f'https://www.youtube.com/channel/{channel}/videos']
+    for url in urls:
+        new_video_id = scrape_videos(url, commented_video_ids)
+        # Если найден новый уникальный идентификатор, то оставляем комментарий и добавляем его в список commented_video_ids
+        if new_video_id is not None:
+            COMMENT_TEXT = get_comment_message("{Hey|Hello|Hi}, {great video!|nice content!|awesome work!}")
+            # comment_on_video(new_video_id, COMMENT_TEXT)
+            commented_video_ids.append(new_video_id)
+            # Break out of the inner for loop so that we don't try the other URL variant
+            print(channel)
+            print(new_video_id)
+            break
+
+
+# Scrape videos for each channel using multiple threads
 while True:
     channels = load_channels()
-    for i, channel in enumerate(channels):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+        futures = []
+        for channel in channels:
+            future = executor.submit(scrape_videos_for_channel, channel, commented_video_ids)
+            futures.append(future)
+        # Wait for all the threads to finish
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+    # Check if any new videos were found for any of the channels
+    new_videos_found = False
+    for channel in channels:
         # Try both URL variants
         new_video_id = None
         urls = [f'https://www.youtube.com/{channel}/videos', f'https://www.youtube.com/channel/{channel}/videos']
         for url in urls:
             new_video_id = scrape_videos(url, commented_video_ids)
-            # Если найден новый уникальный идентификатор, то оставляем комментарий и добавляем его в список commented_video_ids
             if new_video_id is not None:
-                COMMENT_TEXT = get_comment_message("{Hey|Hello|Hi}, {great video!|nice content!|awesome work!}")
-                # comment_on_video(new_video_id, COMMENT_TEXT)
-                commented_video_ids.append(new_video_id)
-                # Break out of the inner for loop so that we don't try the other URL variant
-                print(channel)
-                print(new_video_id)
+                new_videos_found = True
                 break
-        if new_video_id is None:
-            time.sleep(30)
-        # If this is the last channel in the list, update the list of channels
-        if i == len(channels) - 1:
+        if new_videos_found:
             break
+    if not new_videos_found:
+        # Pause before checking again
+        time.sleep(30)
