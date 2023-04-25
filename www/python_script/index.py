@@ -6,6 +6,8 @@ import spintax
 import concurrent.futures
 import mysql.connector
 from database_config import config
+import threading
+import logging
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -61,7 +63,7 @@ def get_comment_message(s):
     return pattern.sub(repl, s)
 
 
-commented_video_ids = []
+commented_video_ids = set()
 
 
 # Define a function to load channels from a file or database
@@ -99,11 +101,35 @@ def scrape_videos_for_channel(channel, commented_video_ids):
         if new_video_id is not None:
             COMMENT_TEXT = get_comment_message("{Hey|Hello|Hi}, {great video!|nice content!|awesome work!}")
             # comment_on_video(new_video_id, COMMENT_TEXT)
-            commented_video_ids.append(new_video_id)
+            commented_video_ids |= set(new_video_id)
             # Break out of the inner for loop so that we don't try the other URL variant
             print(channel)
             print(new_video_id)
             break
+
+
+# Create a lock for accessing the commented_video_ids set
+commented_video_ids_lock = threading.Lock()
+
+# Create a logger for logging exceptions in the threads
+logger = logging.getLogger(__name__)
+
+
+def scrape_videos_for_channel_with_lock(channel_url, commented_video_ids):
+    """
+    Scrape videos for a single channel, using a lock to ensure
+    safe access to the commented_video_ids set.
+    """
+    try:
+        # Scrape the videos for the channel
+        new_video_ids = scrape_videos_for_channel(channel_url, commented_video_ids)
+        # Add any new video IDs to the set, using the lock to ensure safe access
+        with commented_video_ids_lock:
+            if new_video_ids is not None:
+                commented_video_ids.update(new_video_ids)
+    except Exception as e:
+        # Log any exceptions that occur
+        logger.exception(f"Error scraping videos for channel {channel_url}: {e}")
 
 
 # Scrape videos for each channel using multiple threads
@@ -114,28 +140,18 @@ while True:
         time.sleep(3600)
         continue
     # Define the number of threads to use
-    NUM_THREADS = 5
-    with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+    num_threads = 5
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
         futures = []
         for channel in channels:
-            future = executor.submit(scrape_videos_for_channel, channel, commented_video_ids)
+            future = executor.submit(scrape_videos_for_channel_with_lock, channel, commented_video_ids)
             futures.append(future)
         # Wait for all the threads to finish
         for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-    # Check if any new videos were found for any of the channels
-    new_videos_found = False
-    for channel in channels:
-        # Try both URL variants
-        new_video_id = None
-        urls = [f'https://www.youtube.com/{channel}/videos', f'https://www.youtube.com/channel/{channel}/videos']
-        for url in urls:
-            new_video_id = scrape_videos(url, commented_video_ids)
-            if new_video_id is not None:
-                new_videos_found = True
-                break
-        if new_videos_found:
-            break
-    if not new_videos_found:
-        # Pause before checking again
-        time.sleep(30)
+            # Catch and log any exceptions that occur within the threads
+            try:
+                result = future.result()
+            except Exception as e:
+                logger.exception(f"Error in thread: {e}")
+    # Pause before checking again
+    time.sleep(30)
